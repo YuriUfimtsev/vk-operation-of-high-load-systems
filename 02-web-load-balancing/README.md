@@ -226,6 +226,34 @@ TCP  192.168.100.1:80                   10       39       33     2493     2826
 
 Ответы чередуются, у каждого real server `Conns = 5`. IPVS балансирует TCP-соединения в ядре, не разбирая HTTP, и не проверяет доступность backend-ов.
 
+UPDATE: позже заметил, что Backend2 на момент проверки был остановлен (после шага 2.3). При этом IPVS всё равно распределил соединения поровну (Conns = 5). Но у 8082 всего 5 входящих и 5 исходящих пакетов -- 5 SYN и 5 RST, то есть соединения отклонялись, curl -s для них ничего не вывел. По этому примеру можем видеть, что IPVS балансирует соединния, не проверяя доступность backend-ов, и половина клиентов попала на мёртвый сервер. Поэтому важны health-check-и в сочетании с балансировкой.
+
+Если бы Backend2 был запущен, получил бы вывод вида
+
+```bash
+yuri@ubuntu-hp:~$ sudo ipvsadm -Z
+
+yuri@ubuntu-hp:~$ for i in $(seq 1 10); do curl -s http://192.168.100.1; done
+<h2>*** Response from Backend Server 2 ***</h2>
+<h1>Response from Backend Server 1</h1>
+<h2>*** Response from Backend Server 2 ***</h2>
+<h1>Response from Backend Server 1</h1>
+<h2>*** Response from Backend Server 2 ***</h2>
+<h1>Response from Backend Server 1</h1>
+<h2>*** Response from Backend Server 2 ***</h2>
+<h1>Response from Backend Server 1</h1>
+<h2>*** Response from Backend Server 2 ***</h2>
+<h1>Response from Backend Server 1</h1>
+
+yuri@ubuntu-hp:~$ sudo ipvsadm -Ln --stats
+IP Virtual Server version 1.2.1 (size=4096)
+Prot LocalAddress:Port               Conns   InPkts  OutPkts  InBytes OutBytes
+  -> RemoteAddress:Port
+TCP  192.168.100.1:80                   10       68       56     4386     5300
+  -> 127.0.0.1:8081                      5       34       28     2193     2626
+  -> 127.0.0.1:8082                      5       34       28     2193     2674
+```
+
 ## Задание 4. L7 балансировка (nginx)
 
 ### Шаг 4.1. Конфиг
